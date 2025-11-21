@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "codegenerate.h"
 #include "qlabel.h"
 #include "qscrollarea.h"
 #include "ui_mainwindow.h"
@@ -10,6 +11,7 @@
 #include <QString>
 #include <QTableWidgetItem>
 #include <QHeaderView>
+#include <QPlainTextEdit>
 #include "regex.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -317,7 +319,23 @@ void MainWindow::on_pushButton_show_mdfa_clicked()
 
 void MainWindow::on_pushButton_show_code_clicked()
 {
+    QWidget *container = new QWidget;
+    QVBoxLayout *layout = new QVBoxLayout(ui->output_area);
+    container->setMinimumWidth(ui->output_area->width() - 20);
 
+    for (auto &regex : regexs)
+    {
+        QLabel *label = new QLabel(QString::fromStdString(regex.rawRegex));
+        layout->addWidget(label);
+        QPlainTextEdit *text = new QPlainTextEdit;
+        text->setReadOnly(true);
+        text->setPlainText(generateLexerCodeForRegex(regex, regexs));
+        layout->addWidget(text);
+    }
+
+    container->setLayout(layout);
+    ui->output_area->setWidgetResizable(false);
+    ui->output_area->setWidget(container);
 }
 
 QString MainWindow::getFileContent(QString filePath)

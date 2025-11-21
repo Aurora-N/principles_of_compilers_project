@@ -3,3 +3,6 @@
 
 # Qt User Configure Files
 */*.pro.user
+
+# Editor
+.vscode/*
