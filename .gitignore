@@ -1,8 +1,11 @@
 # Build Files
-*/build
+**/build
 
 # Qt User Configure Files
-*/*.pro.user
+**/*.pro.user
 
 # Editor
 .vscode/*
+
+# Temporary Files
+temp/*

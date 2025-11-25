@@ -85,7 +85,7 @@ QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
     // 生成内容包括：必要头文件、输入接口占位、标识符判断函数、
     // 基于 switch(state) 的状态机扫描、接受态判断与输出。
     QString code;
-    code += "#include <iostream>\n#include <string>\nusing namespace std;\n";
+    code += "#include <iostream>\n#include <cctype>\n#include <string>\nusing namespace std;\n";
     code += "char buffer[1024]; int pos = 0; char ch;\n";
     code += "char GetNext(){ return buffer[pos++]; }\n";
 

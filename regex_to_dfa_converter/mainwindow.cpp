@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "classifier.h"
 #include "codegenerate.h"
 #include "qlabel.h"
 #include "qscrollarea.h"
@@ -12,6 +13,10 @@
 #include <QTableWidgetItem>
 #include <QHeaderView>
 #include <QPlainTextEdit>
+#include <QProcess>
+#include <QDir>
+#include <QTextStream>
+#include <QCoreApplication>
 #include "regex.h"
 
 MainWindow::MainWindow(QWidget *parent)
@@ -24,10 +29,18 @@ MainWindow::MainWindow(QWidget *parent)
     connect(ui->input_area, &QPlainTextEdit::textChanged, this, [=]() {
         inputContent = ui->input_area->toPlainText();
     });
+    // 实时更新输入文本框中的内容到inputContentLex中
+    connect(ui->input_area_lex, &QPlainTextEdit::textChanged, this, [=]() {
+        inputContentLex = ui->input_area_lex->toPlainText();
+    });
 }
 
 MainWindow::~MainWindow()
 {
+    // 清理临时目录生成的文件
+    QDir appDir(QCoreApplication::applicationDirPath());
+    QDir tempDir(appDir.filePath("temp"));
+    if (tempDir.exists()) tempDir.removeRecursively();
     delete ui;
 }
 
@@ -336,6 +349,33 @@ void MainWindow::on_pushButton_show_code_clicked()
     container->setLayout(layout);
     ui->output_area->setWidgetResizable(false);
     ui->output_area->setWidget(container);
+    // 编译生成的词法程序
+    if (!regexs.isEmpty()) {
+        Regex last = regexs.back();
+        QString code = generateLexerCodeForRegex(last, regexs);
+        // 保存生成的词法程序源代码
+        QDir appDir(QCoreApplication::applicationDirPath());
+        if (!appDir.exists("temp")) appDir.mkpath("temp");
+        QDir tempDir(appDir.filePath("temp"));
+        QString srcPath = QDir::toNativeSeparators(tempDir.filePath("generated_lexer.cpp"));
+        QString binPath = QDir::toNativeSeparators(tempDir.filePath("generated_lexer"));
+        // 编译生成的词法源代码
+        QFile f(srcPath);
+        if (f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream out(&f); out.setEncoding(QStringConverter::Utf8); out << code; f.close();
+            QProcess compiler;
+            QStringList args; args << srcPath << "-std=c++17" << "-O2" << "-o" << binPath;
+            compiler.start("g++", args);
+            if (!compiler.waitForFinished(30000) || compiler.exitCode() != 0) {
+                QByteArray err = compiler.readAllStandardError();
+                createToastNotification(QString::fromUtf8("编译失败: ") + QString::fromLatin1(err), ERROR);
+            } else {
+                createToastNotification("词法代码已编译成功", SUCCESS);
+            }
+        } else {
+            createToastNotification("无法写入生成代码文件", ERROR);
+        }
+    }
 }
 
 QString MainWindow::getFileContent(QString filePath)
@@ -351,3 +391,41 @@ QString MainWindow::getFileContent(QString filePath)
     return fileContent;
 }
 
+
+void MainWindow::createToastNotification(QString content, ToastType toastType)
+{
+    ToastNotification *toast = new ToastNotification(content, toastType, this);
+    toast->showAtTopCenter(ui->centralwidget);  // 在窗口的指定位置显示
+}
+
+
+void MainWindow::on_pushButton_do_lex_clicked()
+{
+    QString classify_result = "";
+    try {
+        classify_result = QString::fromStdString(classifier(inputContentLex.toStdString()));
+    } catch (ParseException& e) {
+        QString error_msg = QString::fromStdString(e.message + ", 请重新输入");
+        createToastNotification(error_msg, ERROR);
+        return;
+    }
+
+    if (!classify_result.isEmpty()) {
+        ui->output_area_lex->setPlainText(classify_result);
+        createToastNotification("源代码解析成功", SUCCESS);
+    } else {
+        createToastNotification("请输入或导入源代码", WARNING);
+    }
+}
+
+
+void MainWindow::on_pushButton_import_lex_source_clicked()
+{
+    QString filePath = QFileDialog::getOpenFileName(nullptr, "选择文件", "", "Rust源代码 (*.rs);; 其他格式文本 (*.*)");
+    if (filePath.isEmpty()) return;
+    QString in = getFileContent(filePath);
+    if (!in.isEmpty()) {
+        inputContentLex = in;
+        ui->input_area_lex->setPlainText(inputContentLex);
+    }
+}

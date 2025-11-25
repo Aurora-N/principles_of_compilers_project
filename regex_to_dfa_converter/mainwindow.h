@@ -1,6 +1,7 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 #include "regex.h"
+#include "toastnotification.h"
 #include <QMainWindow>
 
 QT_BEGIN_NAMESPACE
@@ -30,13 +31,20 @@ private slots:
 
     void on_pushButton_show_code_clicked();
 
+    void on_pushButton_do_lex_clicked();
+
+    void on_pushButton_import_lex_source_clicked();
+
 private:
     Ui::MainWindow *ui;
 
     QList<Regex> regexs;
 
     QString inputContent;       // 输入框中的内容
+    QString inputContentLex;    // 词法分析输入框的内容
     /** 获取文本中的内容，并将内容返回 */
     QString getFileContent(QString filePath);
+    /** 创建并显示一个Toast通知 */
+    void createToastNotification(QString content, ToastType toastType);
 };
 #endif // MAINWINDOW_H
