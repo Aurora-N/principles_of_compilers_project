@@ -46,5 +46,7 @@ private:
     QString getFileContent(QString filePath);
     /** 创建并显示一个Toast通知 */
     void createToastNotification(QString content, ToastType toastType);
+    /** 编译词法分析代码 */
+    void compileLexCode();
 };
 #endif // MAINWINDOW_H

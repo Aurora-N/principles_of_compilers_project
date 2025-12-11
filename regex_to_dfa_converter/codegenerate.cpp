@@ -1,4 +1,5 @@
 #include "codegenerate.h"
+#include "qdebug.h"
 #include <QSet>
 #include <QMap>
 
@@ -16,6 +17,11 @@ QString generateIdPredicate(const Regex &idRegex)
     for (size_t i = 0; i < s.size(); ++i)
     {
         char c = s[i];
+        if (c == '\\' && i + 1 < s.size()) {
+            chars.insert(QChar(s[i + 1]));
+            i++;
+            continue;
+        }
         if (c == '(' || c == ')' || c == '|' || c == '*' || c == '&' || c == '#')
             continue;
         chars.insert(QChar(c));
@@ -63,8 +69,15 @@ QString generateIdPredicate(const Regex &idRegex)
         return QString("bool is_%1(char ch){ return isdigit(ch); }\n").arg(idName);
     // 不是标准全集时，按位枚举生成判断函数
     QStringList parts;
-    for (auto it = chars.begin(); it != chars.end(); ++it)
-        parts << QString("ch == '%1'").arg(*it);
+    for (auto it = chars.begin(); it != chars.end(); ++it) {
+        if (*it == '\\')
+            parts << "ch == '\\\\'";
+        else if (*it == '\'')
+            parts << "ch == '\\''";
+        else
+            parts << QString("ch == '%1'").arg(*it);
+    }
+    qDebug() << parts.join(" || ") << "at generateIdPredicate()";
     return QString("bool is_%1(char ch){ return %2; }\n").arg(idName, parts.join(" || "));
 }
 
@@ -79,38 +92,19 @@ const Regex *findIdRegex(const QString &id, QList<Regex> regexs)
     return nullptr;
 }
 
-QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
+QString generateLexerCodeFragmentForRegex(const Regex &regex, QList<Regex> regexs)
 {
     // 将最小化 DFA 转换为词法分析代码字符串
-    // 生成内容包括：必要头文件、输入接口占位、标识符判断函数、
-    // 基于 switch(state) 的状态机扫描、接受态判断与输出。
+    // 改为生成 match_XXX 函数，返回匹配长度，若无匹配返回 -1
     QString code;
-    code += "#include <iostream>\n#include <cctype>\n#include <string>\nusing namespace std;\n";
-    code += "char buffer[1024]; int pos = 0; char ch;\n";
-    code += "char GetNext(){ return buffer[pos++]; }\n";
 
-    // 收集当前正则使用到的标识符，并生成对应的判断函数
-    QSet<QString> usedIds;
-    for (const auto &t : regex.minDfa.transitions)
-    {
-        QString sym = QString::fromStdString(t.symbol);
-        if (findIdRegex(sym, regexs))
-            usedIds.insert(sym);
-    }
-    for (const auto &id : usedIds)
-    {
-        const Regex *def = findIdRegex(id, regexs);
-        if (def)
-            code += generateIdPredicate(*def);
-    }
-
-    // 起始态与接受态集合（状态编号为单元素集合的值）
+    // 起始态与接受态集合
     int start = regex.minDfa.startState.empty() ? 0 : *regex.minDfa.startState.rbegin();
     QSet<int> accepts;
     for (const auto &a : regex.minDfa.acceptStates)
         accepts.insert(*a.rbegin());
 
-    // 将转移按 from->to 聚合符号，便于合并条件并压缩
+    // 将转移按 from->to 聚合符号
     QMap<int, QMap<int, QStringList>> transitions;
     for (const auto &t : regex.minDfa.transitions)
     {
@@ -119,7 +113,7 @@ QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
         QString sym = QString::fromStdString(t.symbol);
         transitions[from][to].append(sym);
     }
-    // 预构建字母/数字全集，用于识别并压缩为 isalpha/isdigit
+    // 预构建字母/数字全集
     QSet<QChar> lettersSet;
     for (char a = 'A'; a <= 'Z'; ++a)
         lettersSet.insert(QChar(a));
@@ -129,17 +123,25 @@ QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
     for (char d = '0'; d <= '9'; ++d)
         digitsSet.insert(QChar(d));
 
-    // 生成核心扫描函数名：有 id 则使用 GetToken_<id>，否则为 GetToken
-    QString funcName = QString::fromStdString(regex.id.empty() ? "GetToken" : ("GetToken_" + regex.id));
-    code += QString("void %1(){\n").arg(funcName);
-    code += QString("  int state = %1; bool done = false; ch = GetNext();\n").arg(start);
-    code += "  while (!done) {\n    switch (state) {\n";
+    // 生成 match 函数名
+    QString funcName = QString::fromStdString(regex.id.empty() ? "match_Token" : ("match_" + regex.id));
+    code += QString("int %1(const string& s, int p) {\n").arg(funcName);
+    code += QString("  int state = %1; int cur = p; int lastAcceptLen = -1;\n").arg(start);
+    code += "  bool done = false; char ch;\n";
+    
+    // 检查起始状态是否为接受态
+    if (accepts.contains(start)) {
+        code += "  lastAcceptLen = 0;\n";
+    }
+
+    code += "  while (!done && cur < s.length()) {\n";
+    code += "    ch = s[cur];\n";
+    code += "    switch (state) {\n";
 
     QList<int> fromStates = transitions.keys();
     std::sort(fromStates.begin(), fromStates.end());
     for (int from : fromStates)
     {
-        // 针对单个状态，合并其外出边的条件并生成 if 分支
         code += QString("      case %1:\n").arg(from);
         code += "      { bool moved = false;\n";
         QMap<int, QStringList> outs = transitions[from];
@@ -162,7 +164,6 @@ QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
                     charSet.insert(s[0]);
                 }
             }
-            // 将完整的并集压缩为 isalpha/isdigit；否则逐字符比较或使用 is_<id>
             if (!charSet.isEmpty())
             {
                 bool isLettersGroup = (charSet.size() == lettersSet.size());
@@ -170,11 +171,7 @@ QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
                 {
                     for (auto it = lettersSet.begin(); it != lettersSet.end(); ++it)
                     {
-                        if (!charSet.contains(*it))
-                        {
-                            isLettersGroup = false;
-                            break;
-                        }
+                        if (!charSet.contains(*it)) { isLettersGroup = false; break; }
                     }
                 }
                 bool isDigitsGroup = (charSet.size() == digitsSet.size());
@@ -182,11 +179,7 @@ QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
                 {
                     for (auto it = digitsSet.begin(); it != digitsSet.end(); ++it)
                     {
-                        if (!charSet.contains(*it))
-                        {
-                            isDigitsGroup = false;
-                            break;
-                        }
+                        if (!charSet.contains(*it)) { isDigitsGroup = false; break; }
                     }
                 }
                 if (isLettersGroup)
@@ -195,33 +188,89 @@ QString generateLexerCodeForRegex(const Regex &regex, QList<Regex> regexs)
                     conds << "isdigit(ch)";
                 else
                 {
-                    for (auto it = charSet.begin(); it != charSet.end(); ++it)
-                        conds << QString("ch == '%1'").arg(*it);
+                    for (auto it = charSet.begin(); it != charSet.end(); ++it) {
+                        if (*it == '\\')
+                            conds << "ch == '\\\\'";
+                        else if (*it == '\'')
+                            conds << "ch == '\\''";
+                        else
+                            conds << QString("ch == '%1'").arg(*it);
+                    }
                 }
             }
-            code += QString("        if (%1) { state = %2; ch = GetNext(); moved = true; }\n").arg(conds.join(" || ")).arg(to);
+            
+            // 构造接受态检查
+            QString acceptUpdate = "";
+            if (accepts.contains(to)) {
+                acceptUpdate = " lastAcceptLen = cur - p; ";
+            }
+            
+            code += QString("        if (%1) { state = %2; cur++; moved = true;%3 }\n").arg(conds.join(" || ")).arg(to).arg(acceptUpdate);
         }
         code += "        if (!moved) done = true;\n        break; }\n";
     }
 
     code += "      default: done = true; break;\n";
     code += "    }\n  }\n";
-    // 结束后根据是否处于接受态输出 token 名称，失败则输出 Error
-    QStringList acceptConds;
-    for (int s : accepts)
-        acceptConds << QString("state == %1").arg(s);
-    QString tokenName = QString::fromStdString(regex.id.empty() ? regex.rawRegex : regex.id);
-    if (!acceptConds.isEmpty())
-        code += QString("  if (%1) cout << \"%2\"; else cout << \"Error!\";\n").arg(acceptConds.join(" || ")).arg(tokenName);
-    else
-        code += "  cout << \"Error!\";\n";
+    code += "  return lastAcceptLen;\n";
     code += "}\n";
 
+    return code;
+}
+
+QString generateLexerCode(QList<Regex> regexs)
+{
+    // 统一生成完整的词法分析器代码：
+    // 1) 标识符判定函数 is_xxx
+    // 2) 每个正则的匹配函数 match_xxx
+    // 3) 主函数：行缓冲，行内分词，最长匹配
+    QString code;
+    code += "#include <iostream>\n#include <cctype>\n#include <string>\n#include <vector>\nusing namespace std;\n";
+
+    // 1) 统一生成 is_xxx 判定函数
+    for (const auto &regex : regexs) {
+        if (!regex.id.empty()) {
+            code += generateIdPredicate(regex);
+        }
+    }
+
+    // 2) 生成每个正则的匹配函数
+    for (const auto &regex : regexs) {
+        code += generateLexerCodeFragmentForRegex(regex, regexs);
+    }
+
+    // 3) 主函数
     code += "int main(){\n";
-    code += "  string s; getline(cin, s);\n";
-    code += "  if (s.size() > 1023) { cerr << \"Input too long\"; return 1; }\n";
-    code += "  pos = 0; for (size_t i = 0; i < s.size(); ++i) buffer[i] = s[i]; buffer[s.size()] = '\\0';\n";
-    code += QString("  %1();\n").arg(funcName);
+    code += "  string line;\n";
+    code += "  int lineNum = 0;\n";
+    code += "  while (getline(cin, line)) {\n";
+    code += "    lineNum++;\n";
+    code += "    int pos = 0;\n";
+    code += "    int len = line.length();\n";
+    code += "    while (pos < len) {\n";
+    code += "      if (isspace(line[pos])) { pos++; continue; }\n";
+    code += "      int bestLen = -1;\n";
+    code += "      string bestType = \"\";\n";
+    
+    // 尝试所有 regex
+    for (const auto &regex : regexs) {
+        QString funcName = QString::fromStdString(regex.id.empty() ? "match_Token" : ("match_" + regex.id));
+        QString typeName = QString::fromStdString(regex.id.empty() ? regex.rawRegex : regex.id);
+        code += QString("      {\n");
+        code += QString("        int l = %1(line, pos);\n").arg(funcName);
+        code += QString("        if (l > bestLen) { bestLen = l; bestType = \"%1\"; }\n").arg(typeName);
+        code += QString("      }\n");
+    }
+
+    code += "      if (bestLen > 0) {\n";
+    code += "        cout << \"Line \" << lineNum << \", Col \" << pos+1 << \": <\" << bestType << \", \" << line.substr(pos, bestLen) << \">\" << endl;\n";
+    code += "        pos += bestLen;\n";
+    code += "      } else {\n";
+    code += "        cout << \"Error at line \" << lineNum << \", col \" << pos+1 << \": \" << line[pos] << endl;\n";
+    code += "        pos++;\n";
+    code += "      }\n";
+    code += "    }\n";
+    code += "  }\n";
     code += "  return 0;\n}";
     return code;
 }

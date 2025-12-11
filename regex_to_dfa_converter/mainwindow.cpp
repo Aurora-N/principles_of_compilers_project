@@ -329,30 +329,9 @@ void MainWindow::on_pushButton_show_mdfa_clicked()
     displayMinDFATransitions(regexs, ui->output_area);
 }
 
-
-void MainWindow::on_pushButton_show_code_clicked()
-{
-    QWidget *container = new QWidget;
-    QVBoxLayout *layout = new QVBoxLayout(ui->output_area);
-    container->setMinimumWidth(ui->output_area->width() - 20);
-
-    for (auto &regex : regexs)
-    {
-        QLabel *label = new QLabel(QString::fromStdString(regex.rawRegex));
-        layout->addWidget(label);
-        QPlainTextEdit *text = new QPlainTextEdit;
-        text->setReadOnly(true);
-        text->setPlainText(generateLexerCodeForRegex(regex, regexs));
-        layout->addWidget(text);
-    }
-
-    container->setLayout(layout);
-    ui->output_area->setWidgetResizable(false);
-    ui->output_area->setWidget(container);
-    // 编译生成的词法程序
+void MainWindow::compileLexCode() {
     if (!regexs.isEmpty()) {
-        Regex last = regexs.back();
-        QString code = generateLexerCodeForRegex(last, regexs);
+        QString code = generateLexerCode(regexs);
         // 保存生成的词法程序源代码
         QDir appDir(QCoreApplication::applicationDirPath());
         if (!appDir.exists("temp")) appDir.mkpath("temp");
@@ -376,6 +355,25 @@ void MainWindow::on_pushButton_show_code_clicked()
             createToastNotification("无法写入生成代码文件", ERROR);
         }
     }
+}
+
+void MainWindow::on_pushButton_show_code_clicked()
+{
+    QWidget *container = new QWidget;
+    QVBoxLayout *layout = new QVBoxLayout(ui->output_area);
+    container->setMinimumWidth(ui->output_area->width() - 20);
+
+    QPlainTextEdit *text = new QPlainTextEdit;
+    text->setReadOnly(true);
+    // 生成完整的词法分析器代码
+    text->setPlainText(generateLexerCode(regexs));
+    layout->addWidget(text);
+
+    container->setLayout(layout);
+    ui->output_area->setWidgetResizable(true);
+    ui->output_area->setWidget(container);
+    // 编译生成的词法程序
+    compileLexCode();
 }
 
 QString MainWindow::getFileContent(QString filePath)
@@ -421,7 +419,7 @@ void MainWindow::on_pushButton_do_lex_clicked()
 
 void MainWindow::on_pushButton_import_lex_source_clicked()
 {
-    QString filePath = QFileDialog::getOpenFileName(nullptr, "选择文件", "", "Rust源代码 (*.rs);; 其他格式文本 (*.*)");
+    QString filePath = QFileDialog::getOpenFileName(nullptr, "选择文件", "", "txt (*.txt);; 其他格式文本 (*.*)");
     if (filePath.isEmpty()) return;
     QString in = getFileContent(filePath);
     if (!in.isEmpty()) {

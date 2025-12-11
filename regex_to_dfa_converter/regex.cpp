@@ -86,8 +86,13 @@ string concatContent(const string &s) {
         char currType = getTokenType(i);
         size_t tokenLen = 1;
 
+        // 处理转义字符
+        if (s[i] == '\\' && i + 1 < s.size()) {
+            currType = 'C'; // 转义序列视为普通字符
+            tokenLen = 2;
+        }
         // 处理标识符匹配
-        if (currType == 'I') {
+        else if (currType == 'I') {
             for (const auto& id : sortedIds) {
                 if (i + id.size() <= s.size() && s.substr(i, id.size()) == id) {
                     tokenLen = id.size();
@@ -120,7 +125,6 @@ string concatContent(const string &s) {
     4. 对[ ]操作进行预处理，即转换为选择 (|) 形式
     5. 对+操作进行预处理，如 a+ -> a&a*
     6. 对?操作进行预处理，如 a? -> (a|#)
-    7. 如果有id，则生成相应的函数 bool is_id(char ch)；
 */
 void preprocessRegex(Regex &regex) {
     string rawRegex = "";
@@ -147,7 +151,7 @@ void preprocessRegex(Regex &regex) {
                 result += expandRange(range);
             } else if (rawRegex[i] == '\\') { // 转义符
                 i++;
-                // result += "\\";
+                result += "\\";
                 result += rawRegex[i];
             } else if (rawRegex[i] == '(') {
                 while(i < rawRegex.size() && rawRegex[i] != ')') {
@@ -218,6 +222,7 @@ void preprocessRegex(Regex &regex) {
             }
         }
     }
+    qDebug() << result;
     regex.content = concatContent(result);
     regex.id = id;
     if (id.size() == 0) {
@@ -269,10 +274,18 @@ string regexToPostFix(string& regex) {
 
     for (size_t i = 0; i < regex.length(); i++) {
         char op = regex[i];
-        if (!isOperator(op)) {
-            if (op == '\\') {
-                continue;
+
+        // 处理转义字符，保留转义符号和其后的字符作为整体
+        if (op == '\\') {
+            if (i + 1 < regex.length()) {
+                result += '\\';
+                result += regex[i + 1];
+                i++;
             }
+            continue;
+        }
+
+        if (!isOperator(op)) {
             result += op;
         } else {
             if (op == '(') {
@@ -299,7 +312,7 @@ string regexToPostFix(string& regex) {
         result += opStack.top();
         opStack.pop();
     }
-
+    qDebug() << result << "at regexToPostFix()";
     return result;
 }
 
@@ -309,6 +322,26 @@ NFA regexToNFA(string &postfixRegex) {
 
     for (size_t i = 0; i < postfixRegex.size(); i++) {
         char ch = postfixRegex[i];
+
+        // 处理转义字符
+        if (ch == '\\') {
+            if (i + 1 < postfixRegex.size()) {
+                string by = "";
+                by += postfixRegex[i + 1];
+                i++; // 跳过被转义的字符
+
+                int newStart = stateCounter++;
+                int newAccept = stateCounter++;
+
+                NFA basicNFA;
+                basicNFA.startState = newStart;
+                basicNFA.acceptStates.insert(newAccept);
+                basicNFA.transitions.push_back(Transition(newStart, newAccept, by));
+                nfaStack.push(basicNFA);
+                continue;
+            }
+        }
+
         if (isOperator(ch)) {
             if (ch == '&') {
                 if (nfaStack.size() < 2) continue;
