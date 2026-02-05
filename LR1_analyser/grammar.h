@@ -73,11 +73,11 @@ struct LR1Item {
 // LR(1)状态，是LR(1)项的集合
 using LR1State = set<LR1Item>;
 
-// LR解析表中的Action
+// 解析表中的动作类型
 struct ParsingAction {
     enum class Type { SHIFT, REDUCE, ACCEPT, ERROR, CONFLICT };
     Type type = Type::ERROR;
-    int value = -1; // 用于SHIFT的state索引，用于REDUCE的产生式索引
+    int value = -1; // SHIFT操作对应状态索引，REDUCE操作对应产生式索引
     string conflictDetails; // 如果type是CONFLICT，存储详细信息
 
     ParsingAction(Type t = Type::ERROR, int v = -1, string cd = "") : type(t), value(v), conflictDetails(move(cd)) {}
@@ -175,6 +175,37 @@ private:
     // LR(1)解析表构造函数
     void buildLR1ParsingTable();
 
+    public: struct ParsingStep {
+        int stepId;
+        vector<int> stateStack;
+        vector<string> symbolStack;
+        vector<string> remainingInput;
+        string action;  // "Initial", "Shift", "Reduce", "Accept", "Error"
+        string details; // e.g. "S5", "R(S -> A)", "Unexpected symbol"
+    };
+
+    struct SyntaxTreeNode {
+        string symbol;
+        string content; // 对于终结符：实际的标记字符串
+        vector<SyntaxTreeNode*> children;
+        int id; // 可选ID用于调试
+
+        SyntaxTreeNode(string sym, string txt = "") : symbol(sym), content(txt), id(0) {}
+        ~SyntaxTreeNode() {
+            for(auto c : children) delete c;
+        }
+    };
+
+    // 执行LR(1)语法分析
+    vector<ParsingStep> analyzeSourceCode(const string& sourceCode);
+
+    // 获取语法树根节点（需在analyzeSourceCode之后调用）
+    // 注意：调用者不需要负责删除，Grammar类会管理生命周期，或者每次分析前清理
+    const SyntaxTreeNode* getSyntaxTreeRoot() const { return syntaxTreeRoot; }
+    
+    // 获取语法错误信息
+    const vector<string>& getSyntaxErrors() const { return syntaxErrors; }
+
     string originalStartSymbol; // 存储原始开始符号
     string startSymbol;
     set<string> nonTerminals;
@@ -204,6 +235,10 @@ private:
     vector<map<string, int>> lr1GotoTable_;
     bool isLR1TableConflictFree_;
     vector<string> lr1TableConflictMessages_;
+
+    // 分析结果
+    SyntaxTreeNode* syntaxTreeRoot = nullptr;
+    vector<string> syntaxErrors;
 };
 
 #endif // GRAMMAR_H

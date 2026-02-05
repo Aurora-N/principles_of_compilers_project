@@ -2,6 +2,10 @@
 #include "ui_mainwindow.h"
 #include <QMessageBox>
 #include <QHeaderView>
+#include <QTreeWidget>
+#include <QTreeWidgetItem>
+#include <QBrush>
+#include <QFont>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -62,6 +66,15 @@ void MainWindow::clearOutputWidgets() {
     ui->LR1AnalyzeTableWidget->clear();
     ui->LR1AnalyzeTableWidget->setRowCount(0);
     ui->LR1AnalyzeTableWidget->setColumnCount(0);
+}
+
+void MainWindow::clearLR1AnalysisOutputWidgets() {
+    ui->LR1AnalysisDurationTable->clear();
+    ui->LR1AnalysisDurationTable->setRowCount(0);
+    ui->LR1AnalysisDurationTable->setColumnCount(0);
+    
+    ui->syntax_tree_output->clear();
+    ui->syntax_tree_error_output->clear();
 }
 
 void MainWindow::displayFirstFollowSets() {
@@ -146,6 +159,8 @@ void MainWindow::displayLR0DFA() {
     }
     ui->LR0DFATableWidget->resizeRowsToContents();
     ui->LR0DFATableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    ui->LR0DFATableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
+    ui->LR0DFATableWidget->setColumnWidth(1, 180);
 }
 
 void MainWindow::displaySLR1Status() {
@@ -218,6 +233,8 @@ void MainWindow::displayLR1DFA() {
     }
     ui->LR1DFATableWidget->resizeRowsToContents();
     ui->LR1DFATableWidget->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    ui->LR1DFATableWidget->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Fixed);
+    ui->LR1DFATableWidget->setColumnWidth(1, 180);
 }
 
 void MainWindow::displayLR1ParsingTableAndConflicts(){
@@ -334,3 +351,159 @@ void MainWindow::on_pushButton_analyze_clicked()
         clearOutputWidgets(); 
     }
 }
+
+void MainWindow::on_pushButton_select_source_clicked()
+{
+    QString filePath = QFileDialog::getOpenFileName(this, tr("打开文件"), "", tr("文本文件 (*.txt);;所有文件 (*)"));
+    if (filePath.isEmpty())
+        return;
+
+    QFile file(filePath);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return;
+
+    QTextStream in(&file);
+    ui->sourceInputEditor->setPlainText(in.readAll());
+    file.close();
+}
+
+
+void MainWindow::on_pushButton_gammar_analyze_clicked()
+{
+    // 清空LR1语法分析过程表
+    clearLR1AnalysisOutputWidgets();
+
+    QString sourceCode = ui->sourceInputEditor->toPlainText();
+    if (sourceCode.trimmed().isEmpty()) {
+        QMessageBox::warning(this, tr("输入为空"), tr("请输入待分析的源代码串。"));
+        return;
+    }
+
+    vector<Grammar::ParsingStep> steps = grammar.analyzeSourceCode(sourceCode.toStdString());
+
+    // 表头: 步骤序号, 当前状态栈, 剩余输入符号, 执行的动作类型, 使用的产生式/详情
+    QStringList headers;
+    headers << tr("步骤") << tr("状态栈") << tr("剩余输入") << tr("动作") << tr("详细说明");
+    
+    ui->LR1AnalysisDurationTable->setColumnCount(headers.size());
+    ui->LR1AnalysisDurationTable->setHorizontalHeaderLabels(headers);
+    ui->LR1AnalysisDurationTable->setRowCount(steps.size());
+
+    for (size_t i = 0; i < steps.size(); ++i) {
+        const auto& step = steps[i];
+        
+        // 1. 步骤 ID
+        ui->LR1AnalysisDurationTable->setItem(i, 0, new QTableWidgetItem(QString::number(step.stepId)));
+
+        // 2. 栈 (格式: 0 Sym1 State1 Sym2 State2 ...)
+        QString stackStr;
+        if (!step.stateStack.empty()) {
+            stackStr = QString::number(step.stateStack[0]);
+            for(size_t k=1; k<step.stateStack.size(); ++k) {
+                if (k < step.symbolStack.size()) {
+                    stackStr += " " + QString::fromStdString(step.symbolStack[k]);
+                }
+                stackStr += " " + QString::number(step.stateStack[k]);
+            }
+        }
+        ui->LR1AnalysisDurationTable->setItem(i, 1, new QTableWidgetItem(stackStr));
+
+        // 3. 剩余输入
+        QString inputStr;
+        for(const string& s : step.remainingInput) {
+            inputStr += QString::fromStdString(s) + " ";
+        }
+        ui->LR1AnalysisDurationTable->setItem(i, 2, new QTableWidgetItem(inputStr.trimmed()));
+
+        // 4. 动作
+        ui->LR1AnalysisDurationTable->setItem(i, 3, new QTableWidgetItem(QString::fromStdString(step.action)));
+
+        // 5. 详细说明
+        ui->LR1AnalysisDurationTable->setItem(i, 4, new QTableWidgetItem(QString::fromStdString(step.details)));
+        
+        // 颜色编码
+        if (step.action == "Error") {
+             for(int c=0; c<ui->LR1AnalysisDurationTable->columnCount(); ++c) {
+                 QTableWidgetItem* item = ui->LR1AnalysisDurationTable->item(i, c);
+                 if(item) item->setBackground(QColor(255, 200, 200)); // 浅红
+             }
+        }
+        else if (step.action == "Accept") {
+             for(int c=0; c<ui->LR1AnalysisDurationTable->columnCount(); ++c) {
+                 QTableWidgetItem* item = ui->LR1AnalysisDurationTable->item(i, c);
+                 if(item) item->setBackground(QColor(200, 255, 200)); // 浅绿
+             }
+        }
+    }
+    
+    ui->LR1AnalysisDurationTable->resizeRowsToContents();
+    ui->LR1AnalysisDurationTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+
+    // --- 语法树显示 ---
+    ui->syntax_tree_output->clear();
+    const Grammar::SyntaxTreeNode* root = grammar.getSyntaxTreeRoot();
+    if (root) {
+        displaySyntaxTree(root, nullptr);
+    }
+
+    // --- 错误显示 ---
+    ui->syntax_tree_error_output->clear();
+    const auto& errors = grammar.getSyntaxErrors();
+    
+    // 根据错误设置样式
+    QString oldStyle = ui->syntax_tree_error_output->styleSheet();
+    if (errors.empty()) {
+        QString newStyle = "QListWidget { background-color: rgb(229, 248, 240); border: 1px solid rgb(172, 234, 206); color: rgb(86, 193, 143); }";
+        ui->syntax_tree_error_output->setStyleSheet(newStyle);
+        ui->syntax_tree_error_output->addItem(tr("未发现语法错误"));
+    } else {
+        QString newStyle = "QListWidget { background-color: rgb(254, 248, 230); border: 1px solid rgb(250, 229, 172); color: rgb(208, 135, 0); }";
+        ui->syntax_tree_error_output->setStyleSheet(newStyle);
+        for(const string& err : errors) {
+            ui->syntax_tree_error_output->addItem(QString::fromStdString(err));
+        }
+    }
+}
+
+void MainWindow::displaySyntaxTree(const Grammar::SyntaxTreeNode* node, QTreeWidgetItem* parent) {
+    if (!node) return;
+
+    // 构建节点显示文本
+    QString displayText = QString::fromStdString(node->symbol);
+    if (!node->content.empty() && node->content != node->symbol) {
+        displayText += " (" + QString::fromStdString(node->content) + ")";
+    }
+
+    QTreeWidgetItem* treeItem = nullptr;
+
+    if (parent == nullptr) {
+        // 根节点：直接添加到 QTreeWidget
+        treeItem = new QTreeWidgetItem(ui->syntax_tree_output);
+        treeItem->setText(0, displayText);
+        treeItem->setExpanded(true);
+    } else {
+        // 子节点：添加到父节点下
+        treeItem = new QTreeWidgetItem(parent);
+        treeItem->setText(0, displayText);
+        treeItem->setExpanded(true);
+    }
+
+    // 设置不同类型节点的样式
+    const auto& nonTerminals = grammar.getNonTerminals();
+    if (nonTerminals.count(node->symbol)) {
+        // 非终结符：使用粗体
+        QFont font = treeItem->font(0);
+        font.setBold(true);
+        treeItem->setFont(0, font);
+        treeItem->setForeground(0, QBrush(QColor(0, 100, 180))); // 蓝色
+    } else {
+        // 终结符：使用普通字体，绿色
+        treeItem->setForeground(0, QBrush(QColor(0, 128, 0))); // 绿色
+    }
+
+    // 递归处理所有子节点
+    for (const Grammar::SyntaxTreeNode* child : node->children) {
+        displaySyntaxTree(child, treeItem);
+    }
+}
+

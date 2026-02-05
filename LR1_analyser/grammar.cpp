@@ -34,7 +34,7 @@ string formatProductionWithDot(const Production& prod, int dotPosition, const st
 }
 } // 结束匿名命名空间
 
-const string Grammar::EPSILON = "@";
+const string Grammar::EPSILON = "#";
 const string Grammar::END_OF_INPUT = "$";
 const string Grammar::AUGMENTED_START_SYMBOL = "S'";
 
@@ -85,6 +85,324 @@ string ParsingAction::toString(const vector<Production>& allProductions) const {
     }
 }
 
+vector<Grammar::ParsingStep> Grammar::analyzeSourceCode(const string& sourceCode) {
+    // 清除之前的结果
+    if (syntaxTreeRoot) {
+        delete syntaxTreeRoot;
+        syntaxTreeRoot = nullptr;
+    }
+    syntaxErrors.clear();
+
+    vector<ParsingStep> steps;
+
+    // 检查LR(1)分析表是否可用
+    if (lr1ActionTable_.empty() || lr1GotoTable_.empty()) {
+        syntaxErrors.push_back("错误: LR(1)分析表不可用，请先解析文法。");
+        return steps;
+    }
+
+    // 辅助函数：判断是否为数字（整数或浮点数）
+    auto isNumber = [](const string& token) -> bool {
+        if (token.empty()) return false;
+        bool hasDecimalPoint = false;
+        size_t start = 0;
+        if (token[0] == '-' || token[0] == '+') {
+            if (token.length() == 1) return false;
+            start = 1;
+        }
+        for (size_t i = start; i < token.length(); ++i) {
+            if (token[i] == '.') {
+                if (hasDecimalPoint) return false; // 不允许多个小数点
+                hasDecimalPoint = true;
+            } else if (!isdigit(static_cast<unsigned char>(token[i]))) {
+                return false;
+            }
+        }
+        // 至少要有一个数字
+        return (token.length() > start) && (token[start] != '.' || token.length() > start + 1);
+    };
+
+    // 辅助函数：判断是否为标识符（字母或下划线开头，后跟字母、数字或下划线）
+    auto isIdentifier = [](const string& token) -> bool {
+        if (token.empty()) return false;
+        char first = token[0];
+        if (!isalpha(static_cast<unsigned char>(first)) && first != '_') return false;
+        for (size_t i = 1; i < token.length(); ++i) {
+            char c = token[i];
+            if (!isalnum(static_cast<unsigned char>(c)) && c != '_') return false;
+        }
+        return true;
+    };
+
+    // 词法分析：将源代码分割为token
+    vector<string> inputTokens;      // 用于分析的token（可能被映射为NUM/ID）
+    vector<string> originalTokens;   // 原始token值（用于语法树显示）
+    
+    string currentToken;
+    for (size_t i = 0; i < sourceCode.length(); ++i) {
+        char c = sourceCode[i];
+        if (isspace(c)) {
+            if (!currentToken.empty()) {
+                // 进行token分类
+                string mappedToken = currentToken;
+                if (terminals.count("NUM") && isNumber(currentToken)) {
+                    mappedToken = "NUM";
+                } else if (terminals.count("ID") && isIdentifier(currentToken)) {
+                    // 检查是否为保留字/关键字（已在终结符中定义的符号）
+                    if (!terminals.count(currentToken) && !nonTerminals.count(currentToken)) {
+                        mappedToken = "ID";
+                    }
+                }
+                inputTokens.push_back(mappedToken);
+                originalTokens.push_back(currentToken);
+                currentToken.clear();
+            }
+        } else {
+            currentToken += c;
+        }
+    }
+    if (!currentToken.empty()) {
+        // 进行token分类
+        string mappedToken = currentToken;
+        if (terminals.count("NUM") && isNumber(currentToken)) {
+            mappedToken = "NUM";
+        } else if (terminals.count("ID") && isIdentifier(currentToken)) {
+            // 检查是否为保留字/关键字
+            if (!terminals.count(currentToken) && !nonTerminals.count(currentToken)) {
+                mappedToken = "ID";
+            }
+        }
+        inputTokens.push_back(mappedToken);
+        originalTokens.push_back(currentToken);
+    }
+    inputTokens.push_back(END_OF_INPUT); // 添加结束符号 $
+    originalTokens.push_back(END_OF_INPUT);
+
+    // 初始化状态栈和符号栈
+    vector<int> stateStack;
+    vector<string> symbolStack;
+    vector<SyntaxTreeNode*> nodeStack; // 语法树节点栈
+
+    stateStack.push_back(0); // 初始状态
+    symbolStack.push_back("$"); // 栈底符号
+
+    size_t inputPos = 0;
+    int stepId = 1;
+    bool accepted = false;
+    bool errorOccurred = false;
+
+    // 记录初始步骤
+    ParsingStep initialStep;
+    initialStep.stepId = stepId++;
+    initialStep.stateStack = stateStack;
+    initialStep.symbolStack = symbolStack;
+    for (size_t i = inputPos; i < inputTokens.size(); ++i) {
+        // 显示时包含原始值
+        if (inputTokens[i] != originalTokens[i]) {
+            initialStep.remainingInput.push_back(inputTokens[i] + "(" + originalTokens[i] + ")");
+        } else {
+            initialStep.remainingInput.push_back(inputTokens[i]);
+        }
+    }
+    initialStep.action = "Initial";
+    initialStep.details = "初始化";
+    steps.push_back(initialStep);
+
+    while (!accepted && !errorOccurred) {
+        int currentState = stateStack.back();
+        string currentInput = (inputPos < inputTokens.size()) ? inputTokens[inputPos] : END_OF_INPUT;
+        string currentOriginal = (inputPos < originalTokens.size()) ? originalTokens[inputPos] : END_OF_INPUT;
+
+        // 查找ACTION表
+        ParsingAction action;
+        if (currentState < static_cast<int>(lr1ActionTable_.size()) &&
+            lr1ActionTable_[currentState].count(currentInput)) {
+            action = lr1ActionTable_[currentState].at(currentInput);
+        } else {
+            action.type = ParsingAction::Type::ERROR;
+        }
+
+        ParsingStep step;
+        step.stepId = stepId++;
+        step.stateStack = stateStack;
+        step.symbolStack = symbolStack;
+        for (size_t i = inputPos; i < inputTokens.size(); ++i) {
+            // 显示时包含原始值
+            if (inputTokens[i] != originalTokens[i]) {
+                step.remainingInput.push_back(inputTokens[i] + "(" + originalTokens[i] + ")");
+            } else {
+                step.remainingInput.push_back(inputTokens[i]);
+            }
+        }
+
+        switch (action.type) {
+            case ParsingAction::Type::SHIFT: {
+                // 移进操作
+                int nextState = action.value;
+                stateStack.push_back(nextState);
+                symbolStack.push_back(currentInput);
+
+                // 为终结符创建叶节点，保存原始值
+                SyntaxTreeNode* leafNode = new SyntaxTreeNode(currentInput, currentOriginal);
+                nodeStack.push_back(leafNode);
+
+                step.action = "Shift";
+                string displayToken = (currentInput != currentOriginal) ? 
+                    currentInput + "(" + currentOriginal + ")" : currentInput;
+                step.details = "移进 " + displayToken + "，转到状态 " + to_string(nextState);
+                inputPos++;
+                break;
+            }
+            case ParsingAction::Type::REDUCE: {
+                // 归约操作
+                int prodIndex = action.value;
+                const Production& prod = productions[prodIndex];
+                int rhsLength = static_cast<int>(prod.rhs.size());
+
+                // 处理空产生式 (epsilon)
+                if (rhsLength == 1 && prod.rhs[0] == EPSILON) {
+                    rhsLength = 0;
+                }
+
+                // 从栈中弹出rhsLength个元素，收集子节点
+                vector<SyntaxTreeNode*> childNodes;
+                for (int j = 0; j < rhsLength; ++j) {
+                    stateStack.pop_back();
+                    symbolStack.pop_back();
+                    if (!nodeStack.empty()) {
+                        childNodes.push_back(nodeStack.back());
+                        nodeStack.pop_back();
+                    }
+                }
+
+                // 子节点需要反转（因为是从栈顶弹出的，顺序是反的）
+                std::reverse(childNodes.begin(), childNodes.end());
+
+                // 创建语法树节点，根据产生式类型进行优化处理
+                SyntaxTreeNode* newNode = nullptr;
+
+                // 检测括号产生式模式: X -> ( Y ) 
+                // 括号不进入语法树，只保留中间的表达式
+                if (rhsLength == 3 && 
+                    prod.rhs[0] == "(" && prod.rhs[2] == ")" &&
+                    childNodes.size() == 3) {
+                    // 删除左括号和右括号节点，只保留中间节点
+                    delete childNodes[0]; // 删除 '('
+                    delete childNodes[2]; // 删除 ')'
+                    newNode = childNodes[1]; // 直接使用中间的节点
+                }
+                // 检测二元操作符模式: X -> Y op Z (如 E -> E + T)
+                // 让操作符成为父节点
+                else if (rhsLength == 3 && 
+                         childNodes.size() == 3 &&
+                         nonTerminals.count(prod.rhs[0]) && 
+                         nonTerminals.count(prod.rhs[2]) &&
+                         terminals.count(prod.rhs[1])) {
+                    // 操作符作为父节点
+                    SyntaxTreeNode* opNode = childNodes[1]; // 操作符节点
+                    opNode->children.push_back(childNodes[0]); // 左操作数
+                    opNode->children.push_back(childNodes[2]); // 右操作数
+                    newNode = opNode;
+                }
+                // 检测一元操作符模式: X -> op Y (如 F -> - F)
+                else if (rhsLength == 2 &&
+                         childNodes.size() == 2 &&
+                         terminals.count(prod.rhs[0]) &&
+                         nonTerminals.count(prod.rhs[1])) {
+                    // 一元操作符作为父节点
+                    SyntaxTreeNode* opNode = childNodes[0]; // 操作符节点
+                    opNode->children.push_back(childNodes[1]); // 操作数
+                    newNode = opNode;
+                }
+                // 检测简单传递产生式: X -> Y (如 E -> T, T -> F)
+                // 直接传递子节点，避免不必要的中间层
+                else if (rhsLength == 1 && 
+                         childNodes.size() == 1 &&
+                         nonTerminals.count(prod.rhs[0])) {
+                    // 直接传递子节点，不创建新的中间节点
+                    newNode = childNodes[0];
+                }
+                // 默认情况：创建以非终结符为父节点的子树
+                else {
+                    newNode = new SyntaxTreeNode(prod.lhs);
+                    for (SyntaxTreeNode* child : childNodes) {
+                        newNode->children.push_back(child);
+                    }
+                }
+
+                // 将新非终结符压栈
+                symbolStack.push_back(prod.lhs);
+                nodeStack.push_back(newNode);
+
+                // 查找GOTO表获取新状态
+                int gotoState = -1;
+                int topState = stateStack.back();
+                if (topState < static_cast<int>(lr1GotoTable_.size()) &&
+                    lr1GotoTable_[topState].count(prod.lhs)) {
+                    gotoState = lr1GotoTable_[topState].at(prod.lhs);
+                }
+
+                if (gotoState >= 0) {
+                    stateStack.push_back(gotoState);
+                    step.action = "Reduce";
+                    string prodStr = prod.lhs + " ->";
+                    for (const string& s : prod.rhs) {
+                        prodStr += " " + s;
+                    }
+                    step.details = "用产生式 " + prodStr + " 归约，转到状态 " + to_string(gotoState);
+                } else {
+                    step.action = "Error";
+                    step.details = "GOTO表中找不到 (" + to_string(topState) + ", " + prod.lhs + ")";
+                    syntaxErrors.push_back(step.details);
+                    errorOccurred = true;
+                }
+                break;
+            }
+            case ParsingAction::Type::ACCEPT: {
+                step.action = "Accept";
+                step.details = "接受！语法分析成功。";
+                accepted = true;
+
+                // 设置语法树根节点
+                if (!nodeStack.empty()) {
+                    syntaxTreeRoot = nodeStack.back();
+                    nodeStack.pop_back();
+                }
+                break;
+            }
+            case ParsingAction::Type::CONFLICT: {
+                step.action = "Error";
+                step.details = "分析表存在冲突: " + action.conflictDetails;
+                syntaxErrors.push_back("状态 " + to_string(currentState) + ", 输入 '" + currentInput + "': " + action.conflictDetails);
+                errorOccurred = true;
+                break;
+            }
+            case ParsingAction::Type::ERROR:
+            default: {
+                step.action = "Error";
+                string displayToken = (currentInput != currentOriginal) ? 
+                    currentInput + "(" + currentOriginal + ")" : currentInput;
+                step.details = "语法错误: 在状态 " + to_string(currentState) + " 遇到意外符号 '" + displayToken + "'";
+                syntaxErrors.push_back(step.details);
+                errorOccurred = true;
+                break;
+            }
+        }
+
+        steps.push_back(step);
+    }
+
+    // 清理未使用的节点（如果发生错误）
+    if (errorOccurred) {
+        for (SyntaxTreeNode* node : nodeStack) {
+            delete node;
+        }
+        nodeStack.clear();
+    }
+
+    return steps;
+}
+
 Grammar::Grammar() {
     clear();
 }
@@ -111,6 +429,12 @@ void Grammar::clear() {
     lr1GotoTable_.clear();
     isLR1TableConflictFree_ = true;
     lr1TableConflictMessages_.clear();
+
+    if (syntaxTreeRoot) {
+        delete syntaxTreeRoot;
+        syntaxTreeRoot = nullptr;
+    }
+    syntaxErrors.clear();
 }
 
 bool Grammar::parseGrammar(const QString& grammarInput) {
@@ -173,7 +497,7 @@ bool Grammar::identifyNonTerminalsAndStartSymbol(const QStringList& lines) {
             return false;
         }
         if (lhs == EPSILON) {
-            errorMessage = "LHS不能是Epsilon ('@'): " + trimmedLine.toStdString();
+            errorMessage = "LHS不能是Epsilon ('#'): " + trimmedLine.toStdString();
             return false;
         }
 
@@ -315,28 +639,33 @@ set<string> Grammar::calculateFirstForSequence(const vector<string>& sequence) c
         return first;
     }
 
+    // Check for nullable sequence correctly
     bool allDeriveEpsilon = true;
     for (const string& symbol : sequence) {
+        if (symbol == EPSILON) {
+            // Epsilon itself derives epsilon, continue to next
+            continue;
+        }
+
+        bool derivesEpsilon = false;
         if (nonTerminals.count(symbol)) {
             const auto& ntFirst = firstSets.at(symbol);
-            bool hasEpsilon = false;
             for (const string& s : ntFirst) {
                 if (s == EPSILON) {
-                    hasEpsilon = true;
+                    derivesEpsilon = true;
                 } else {
                     first.insert(s);
                 }
             }
-            if (!hasEpsilon) {
-                allDeriveEpsilon = false;
-                break; // 无需进一步检查
-            }
         } else {
-            if (symbol != EPSILON) {
-                first.insert(symbol);
-                allDeriveEpsilon = false;
-                break;
-            }
+            // Terminal
+            first.insert(symbol);
+            derivesEpsilon = false;
+        }
+
+        if (!derivesEpsilon) {
+            allDeriveEpsilon = false;
+            break; 
         }
     }
 
@@ -845,32 +1174,79 @@ void Grammar::buildLR1ParsingTable() {
     for (size_t i = 0; i < lr1States_.size(); ++i) {
         const LR1State& state = lr1States_[i];
 
+        // 定义辅助函数来设置动作并处理冲突
+        auto setAction = [&](const string& symbol, ParsingAction action) {
+             if (lr1ActionTable_[i].count(symbol) && lr1ActionTable_[i][symbol].type != ParsingAction::Type::ERROR) {
+                // 检测到冲突
+                ParsingAction existing = lr1ActionTable_[i][symbol];
+                bool resolved = false;
+
+                // 解决策略 1: 移进 > 归约
+                if (existing.type == ParsingAction::Type::SHIFT && action.type == ParsingAction::Type::REDUCE) {
+                    // 保持移进 (existing)，忽略归约 (action)
+                    resolved = true;
+                    // 即使已解决也标记冲突
+                    isLR1TableConflictFree_ = false;
+                    string conflictMsg = "状态 " + to_string(i) + ", 符号 '" + symbol + "': 移进/归约冲突 (已解决: 保持移进) " + 
+                                        existing.toString(productions) + " / " + action.toString(productions);
+                    lr1TableConflictMessages_.push_back(conflictMsg);
+                } else if (existing.type == ParsingAction::Type::REDUCE && action.type == ParsingAction::Type::SHIFT) {
+                    // 将归约替换为移进
+                    lr1ActionTable_[i][symbol] = action;
+                    resolved = true;
+                    // 标记冲突
+                    isLR1TableConflictFree_ = false;
+                    string conflictMsg = "状态 " + to_string(i) + ", 符号 '" + symbol + "': 移进/归约冲突 (已解决: 替换为移进) " + 
+                                        existing.toString(productions) + " / " + action.toString(productions);
+                    lr1TableConflictMessages_.push_back(conflictMsg);
+                }
+                // 解决策略 2: 归约/归约 - 选择较早的规则 (较小的产生式索引)
+                else if (existing.type == ParsingAction::Type::REDUCE && action.type == ParsingAction::Type::REDUCE) {
+                        if (action.value < existing.value) {
+                            lr1ActionTable_[i][symbol] = action;
+                        }
+                        resolved = true;
+                        // 标记冲突
+                        isLR1TableConflictFree_ = false;
+                        string conflictMsg = "状态 " + to_string(i) + ", 符号 '" + symbol + "': 归约/归约冲突 (已解决: 选择规则 " + 
+                                            to_string(std::min(action.value, existing.value)) + ") " + 
+                                            existing.toString(productions) + " / " + action.toString(productions);
+                        lr1TableConflictMessages_.push_back(conflictMsg);
+                }
+
+                if (!resolved) {
+                        isLR1TableConflictFree_ = false;
+                        string conflictMsg = "状态 " + to_string(i) + ", 符号 '" + symbol + "': 冲突 " + 
+                                            existing.toString(productions) + " / " + action.toString(productions);
+                        lr1TableConflictMessages_.push_back(conflictMsg);
+                        
+                        action.type = ParsingAction::Type::CONFLICT;
+                        action.conflictDetails = existing.toString(productions) + " / " + action.toString(productions);
+                        lr1ActionTable_[i][symbol] = action;
+                }
+            } else {
+                lr1ActionTable_[i][symbol] = action;
+            }
+        };
+
         // 从 lr1Transitions_ 获取移进动作 (针对终结符和 $)。
         if (lr1Transitions_.count(i)) {
             for (const auto& trans : lr1Transitions_.at(i)) {
                 const string& symbol = trans.first;
                 int targetState = trans.second;
                 if (terminals.count(symbol) || symbol == END_OF_INPUT) {
-                    if (lr1ActionTable_[i].count(symbol) && lr1ActionTable_[i][symbol].type != ParsingAction::Type::ERROR) {
-                        isLR1TableConflictFree_ = false;
-                        string existingAction = lr1ActionTable_[i][symbol].toString(productions);
-                        lr1ActionTable_[i][symbol].type = ParsingAction::Type::CONFLICT;
-                        lr1ActionTable_[i][symbol].conflictDetails = existingAction + " / S" + to_string(targetState);
-                        lr1TableConflictMessages_.push_back("状态 " + to_string(i) + ", 符号 '" + symbol + "': 冲突 " + lr1ActionTable_[i][symbol].conflictDetails);
-                    } else {
-                        lr1ActionTable_[i][symbol] = ParsingAction(ParsingAction::Type::SHIFT, targetState);
-                    }
+                    setAction(symbol, ParsingAction(ParsingAction::Type::SHIFT, targetState));
                 }
             }
         }
 
         // 从类似 [A -> alpha ., l] 的项获取归约和接受动作。
         for (const LR1Item& item : state) {
-            // 检查项是否为归约项：点在末尾，或 [A -> @ ., l]
+            // 检查项是否为归约项：点在末尾，或 [A -> . #, l] (点在0, RHS是EPSILON)
             bool isReduceItem = (item.dotPosition == static_cast<int>(productions[item.productionIndex].rhs.size()));
             if (!isReduceItem && productions[item.productionIndex].rhs.size() == 1 &&
-                productions[item.productionIndex].rhs[0] == EPSILON && item.dotPosition == 1) {
-                isReduceItem = true; // [A -> @ ., l] 的特殊情况
+                productions[item.productionIndex].rhs[0] == EPSILON && item.dotPosition == 0) {
+                isReduceItem = true; // [A -> . #, l] 的特殊情况，等同于归约
             }
 
             if (isReduceItem) {
@@ -879,28 +1255,10 @@ void Grammar::buildLR1ParsingTable() {
 
                 if (rule.isAugmented) { // [S' -> S ., $] 的接受动作
                     if (lookahead == END_OF_INPUT) {
-                        if (lr1ActionTable_[i].count(END_OF_INPUT) && lr1ActionTable_[i][END_OF_INPUT].type != ParsingAction::Type::ERROR) {
-                            isLR1TableConflictFree_ = false;
-                            string existingAction = lr1ActionTable_[i][END_OF_INPUT].toString(productions);
-                            lr1ActionTable_[i][END_OF_INPUT].type = ParsingAction::Type::CONFLICT;
-                            lr1ActionTable_[i][END_OF_INPUT].conflictDetails = existingAction + " / Acc";
-                             lr1TableConflictMessages_.push_back("状态 " + to_string(i) + ", 符号 '$': 冲突 " + lr1ActionTable_[i][END_OF_INPUT].conflictDetails);
-                        } else {
-                            lr1ActionTable_[i][END_OF_INPUT] = ParsingAction(ParsingAction::Type::ACCEPT);
-                        }
+                        setAction(END_OF_INPUT, ParsingAction(ParsingAction::Type::ACCEPT));
                     }
                 } else { // [A -> alpha ., l], A != S' 的归约动作
-                    int productionRuleIndex = item.productionIndex;
-                    if (lr1ActionTable_[i].count(lookahead) && lr1ActionTable_[i][lookahead].type != ParsingAction::Type::ERROR) {
-                        isLR1TableConflictFree_ = false;
-                        string existingAction = lr1ActionTable_[i][lookahead].toString(productions);
-                        string reduceActionStr = "R" + ((rule.originalRuleIndex > 0) ? to_string(rule.originalRuleIndex) : "?("+to_string(productionRuleIndex)+")" );
-                        lr1ActionTable_[i][lookahead].type = ParsingAction::Type::CONFLICT;
-                        lr1ActionTable_[i][lookahead].conflictDetails = existingAction + " / " + reduceActionStr;
-                        lr1TableConflictMessages_.push_back("状态 " + to_string(i) + ", 符号 '" + lookahead + "': 冲突 " + lr1ActionTable_[i][lookahead].conflictDetails);
-                    } else {
-                        lr1ActionTable_[i][lookahead] = ParsingAction(ParsingAction::Type::REDUCE, productionRuleIndex);
-                    }
+                    setAction(lookahead, ParsingAction(ParsingAction::Type::REDUCE, item.productionIndex));
                 }
             }
         }
