@@ -7,6 +7,10 @@ using namespace std;
 
 vector<string> identifiers;
 
+void clearIdentifiers() {
+    identifiers.clear();
+}
+
 Regex::Regex(string inputContent, string id) : id(id), rawRegex(inputContent) {
     // if (!id.empty()) identifiers.push_back(id);
 }
@@ -153,13 +157,9 @@ void preprocessRegex(Regex &regex) {
                 i++;
                 result += "\\";
                 result += rawRegex[i];
-            } else if (rawRegex[i] == '(') {
-                while(i < rawRegex.size() && rawRegex[i] != ')') {
-                    // 一直读取字符，直到遇到')'
-                    result += rawRegex[i];
-                    i++;
-                }
-                result += rawRegex[i]; // 加上')'
+            } else if (rawRegex[i] == '(' || rawRegex[i] == ')') {
+                // 括号直接加入结果，让循环继续处理括号内的内容
+                result += rawRegex[i];
             } else if (rawRegex[i] == '+') {
                 char pre = rawRegex[i-1];
                 bool isNormal = true; // 区分是不是普通的字符

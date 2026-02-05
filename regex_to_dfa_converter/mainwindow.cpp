@@ -48,8 +48,13 @@ void MainWindow::on_pushButton_do_convert_clicked()
 {
     if (inputContent.size() != 0) {
         regexs.clear();
+        clearIdentifiers();  // 清空全局标识符列表，避免多次运行时累积
         QStringList regexContent = inputContent.split("\n");
         for (QString regex : regexContent) {
+            // 跳过空行（包括只有空格的行）
+            if (regex.trimmed().isEmpty()) {
+                continue;
+            }
             Regex re = Regex(regex.toStdString());
             preprocessRegex(re);
             initNFA(re);
@@ -419,7 +424,7 @@ void MainWindow::on_pushButton_do_lex_clicked()
 
 void MainWindow::on_pushButton_import_lex_source_clicked()
 {
-    QString filePath = QFileDialog::getOpenFileName(nullptr, "选择文件", "", "txt (*.txt);; 其他格式文本 (*.*)");
+    QString filePath = QFileDialog::getOpenFileName(nullptr, "选择文件", "", "任何文本 (*.*)");
     if (filePath.isEmpty()) return;
     QString in = getFileContent(filePath);
     if (!in.isEmpty()) {

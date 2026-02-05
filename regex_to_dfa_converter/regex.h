@@ -23,4 +23,6 @@ void initNFA(Regex &regex);
 void initDFA(Regex &regex);
 
 void initMinDFA(Regex &regex);
+
+void clearIdentifiers();
 #endif // REGEX_H
