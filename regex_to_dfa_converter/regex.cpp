@@ -222,7 +222,7 @@ void preprocessRegex(Regex &regex) {
             }
         }
     }
-    qDebug() << result;
+
     regex.content = concatContent(result);
     regex.id = id;
     if (id.size() == 0) {
@@ -312,7 +312,7 @@ string regexToPostFix(string& regex) {
         result += opStack.top();
         opStack.pop();
     }
-    qDebug() << result << "at regexToPostFix()";
+
     return result;
 }
 

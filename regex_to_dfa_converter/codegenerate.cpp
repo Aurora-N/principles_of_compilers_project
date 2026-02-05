@@ -4,6 +4,63 @@
 #include <QMap>
 
 /**
+ * 解析 rawContent 中的范围格式
+ * 例如: "[a-e]" 返回 [{'a','e'}]
+ * 例如: "[a-zA-Z]" 返回 [{'a','z'}, {'A','Z'}]
+ * 例如: "[0-9]" 返回 [{'0','9'}]
+ * 如果不是纯范围格式或包含单独字符，返回空列表
+ */
+QList<QPair<QChar, QChar>> parseRanges(const QString& rawContent) {
+    QList<QPair<QChar, QChar>> ranges;
+    
+    QString content = rawContent;
+
+    if (!content.isEmpty() && content[0] == '=') {
+        content = content.sliced(1);
+    }
+
+    // 检查是否是 [xxx] 格式
+    if (!content.startsWith('[') || !content.endsWith(']')) {
+        return ranges;
+    }
+    
+    QString inner = content.mid(1, content.length() - 2);
+    int i = 0;
+    while (i < inner.length()) {
+        if (i + 2 < inner.length() && inner[i + 1] == '-') {
+            // 范围格式 a-z
+            ranges.append(qMakePair(inner[i], inner[i + 2]));
+            i += 3;
+        } else {
+            // 不是纯范围格式（包含单独字符），返回空
+            return QList<QPair<QChar, QChar>>();
+        }
+    }
+    
+    return ranges;
+}
+
+/**
+ * 根据范围列表生成条件表达式
+ * 例如: [{'a','e'}] -> "(c >= 'a' && c <= 'e')"
+ * 例如: [{'a','z'}, {'A','Z'}] -> "(c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')"
+ */
+QString generateRangeCondition(const QList<QPair<QChar, QChar>>& ranges) {
+    QStringList conditions;
+    for (const auto& range : ranges) {
+        QChar start = range.first;
+        QChar end = range.second;
+        if (start == end) {
+            // 单字符范围
+            conditions.append(QString("c == '%1'").arg(start));
+        } else {
+            conditions.append(QString("(c >= '%1' && c <= '%2')").arg(start).arg(end));
+        }
+    }
+    return conditions.join(" || ");
+}
+
+/**
  * 从正则表达式内容中提取字符集合
  * 例如: (0|1|2|3|4|5|6|7|8|9) -> {'0','1',...,'9'}
  * 例如: (a|b|...|z|A|B|...|Z) -> {'a',...,'z','A',...,'Z'}
@@ -116,6 +173,7 @@ QString generateLexerCode(QList<Regex> regexs)
         if (!idRegex) continue;
         
         QString content = QString::fromStdString(idRegex->content);
+        QString rawContent = QString::fromStdString(idRegex->rawContent);
         QSet<QChar> charSet = extractCharSet(content);
         
         // 跳过空字符集或复杂正则（包含引用其他标识符的）
@@ -124,12 +182,13 @@ QString generateLexerCode(QList<Regex> regexs)
         generatedPredicates.insert(idSym);
         code += "bool is_" + idSym + "(char c) {\n";
         
-        if (isDigitSet(charSet)) {
-            code += "    return isdigit(c) != 0;\n";
-        } else if (isLetterSet(charSet)) {
-            code += "    return isalpha(c) != 0;\n";
+        // 首先尝试从 rawContent 解析范围格式
+        QList<QPair<QChar, QChar>> ranges = parseRanges(rawContent);
+        if (!ranges.isEmpty()) {
+            // 使用范围表达式
+            code += "    return " + generateRangeCondition(ranges) + ";\n";
         } else {
-            // 生成字符枚举判断
+            // 回退到字符枚举判断
             QStringList conditions;
             for (const QChar& c : charSet) {
                 if (c == '\'') {
