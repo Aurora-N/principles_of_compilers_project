@@ -242,8 +242,10 @@ vector<Grammar::ParsingStep> Grammar::analyzeSourceCode(const string& sourceCode
                 stateStack.push_back(nextState);
                 symbolStack.push_back(currentInput);
 
-                // 为终结符创建叶节点，保存原始值
-                SyntaxTreeNode* leafNode = new SyntaxTreeNode(currentInput, currentOriginal);
+                // 为终结符创建叶节点
+                // 对于 NUM/ID 等映射类型，直接使用原始值作为显示符号
+                string displaySymbol = (currentInput != currentOriginal) ? currentOriginal : currentInput;
+                SyntaxTreeNode* leafNode = new SyntaxTreeNode(displaySymbol, currentOriginal);
                 nodeStack.push_back(leafNode);
 
                 step.action = "Shift";
