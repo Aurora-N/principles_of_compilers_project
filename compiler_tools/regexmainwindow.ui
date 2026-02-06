@@ -1,0 +1,650 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>RegexMainWindow</class>
+ <widget class="QMainWindow" name="RegexMainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>600</height>
+   </rect>
+  </property>
+  <property name="minimumSize">
+   <size>
+    <width>1200</width>
+    <height>600</height>
+   </size>
+  </property>
+  <property name="windowTitle">
+   <string>正则表达式到DFA图转换器</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">background-color: rgb(255, 255, 255);
+font: 10pt &quot;微软雅黑&quot;;</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="layoutDirection">
+       <enum>Qt::LayoutDirection::LeftToRight</enum>
+      </property>
+      <property name="autoFillBackground">
+       <bool>false</bool>
+      </property>
+      <property name="styleSheet">
+       <string notr="true">QTabWidget::pane { /* The tab widget frame */
+  border: none;
+  border-top: 1px solid rgb(231, 236, 243);
+  border-radius: 0px;
+}
+
+/* Style the tab using the tab sub-control. Note that
+    it reads QTabBar _not_ QTabWidget */
+QTabBar::tab {
+    background-color: none;
+    border-radius: 0px;
+    min-width: 16ex;
+    padding: 4px;
+}
+
+QTabBar::tab:selected {
+    background-color: none;
+    color: #0060DF;
+    border-bottom: 1px solid #0060DF;
+}
+
+QTabBar::tab:hover {
+    color: #0060DF;
+}
+
+QTabBar::tab:!selected {
+    margin-bottom: 1px;
+}</string>
+      </property>
+      <property name="tabPosition">
+       <enum>QTabWidget::TabPosition::North</enum>
+      </property>
+      <property name="tabShape">
+       <enum>QTabWidget::TabShape::Rounded</enum>
+      </property>
+      <property name="currentIndex">
+       <number>0</number>
+      </property>
+      <widget class="QWidget" name="tab_regex">
+       <attribute name="title">
+        <string>正则表达式转换</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_4">
+        <property name="spacing">
+         <number>7</number>
+        </property>
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="topMargin">
+         <number>11</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QWidget" name="widget" native="true">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>35</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>35</height>
+           </size>
+          </property>
+          <widget class="QPushButton" name="pushButton_do_convert">
+           <property name="geometry">
+            <rect>
+             <x>0</x>
+             <y>0</y>
+             <width>108</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #0060DF;
+    color: #ffffff;
+    border-radius: 5px;
+}
+
+QPushButton:hover {
+    background-color: #1576ff;
+}</string>
+           </property>
+           <property name="text">
+            <string>开始转换</string>
+           </property>
+          </widget>
+          <widget class="QPushButton" name="pushButton_show_nfa">
+           <property name="geometry">
+            <rect>
+             <x>240</x>
+             <y>0</y>
+             <width>108</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 5px;
+    border: 1px solid #d2d7dd;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}</string>
+           </property>
+           <property name="text">
+            <string>NFA</string>
+           </property>
+          </widget>
+          <widget class="QPushButton" name="pushButton_show_dfa">
+           <property name="geometry">
+            <rect>
+             <x>360</x>
+             <y>0</y>
+             <width>108</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 5px;
+    border: 1px solid #d2d7dd;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}</string>
+           </property>
+           <property name="text">
+            <string>DFA</string>
+           </property>
+          </widget>
+          <widget class="QPushButton" name="pushButton_show_mdfa">
+           <property name="geometry">
+            <rect>
+             <x>480</x>
+             <y>0</y>
+             <width>108</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 5px;
+    border: 1px solid #d2d7dd;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}</string>
+           </property>
+           <property name="text">
+            <string>最小化DFA</string>
+           </property>
+          </widget>
+          <widget class="QPushButton" name="pushButton_import_regex">
+           <property name="geometry">
+            <rect>
+             <x>120</x>
+             <y>0</y>
+             <width>111</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 5px;
+    border: 1px solid #d2d7dd;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}</string>
+           </property>
+           <property name="text">
+            <string>导入正则文件</string>
+           </property>
+          </widget>
+          <widget class="QPushButton" name="pushButton_show_code">
+           <property name="geometry">
+            <rect>
+             <x>600</x>
+             <y>0</y>
+             <width>108</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 5px;
+    border: 1px solid #d2d7dd;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}</string>
+           </property>
+           <property name="text">
+            <string>词法分析代码</string>
+           </property>
+          </widget>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_2">
+          <property name="spacing">
+           <number>7</number>
+          </property>
+          <item>
+           <widget class="QPlainTextEdit" name="input_area">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>350</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPlainTextEdit {
+    background-color: rgb(255, 255, 255);
+    border: 1px solid rgb(231, 236, 243);
+    border-radius: 10px;
+    padding: 10px;
+    color: #222222;
+    font: 12pt &quot;Courier&quot;;
+}
+
+QPlainTextEdit:hover {
+    border: 1px solid rgba(0, 110, 255, 0.5);
+}
+
+QScrollBar:vertical {
+  border: none;
+  background: #f5f5f5;
+  width: 10px;
+  margin: 0px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+  background: #999;
+  min-height: 20px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+  background: #888;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  background: none;
+  width: 0px;
+  height: 0px;
+}
+
+QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical {
+  background: #888;
+  width: 10px;
+  height: 10px;
+}</string>
+            </property>
+            <property name="documentTitle">
+             <string/>
+            </property>
+            <property name="placeholderText">
+             <string>导入正则文件或在此输入正则表达式...</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QScrollArea" name="output_area">
+            <property name="styleSheet">
+             <string notr="true">QScrollArea {
+background-color: rgb(248, 250, 252);
+border: 1px solid rgb(231, 236, 243);
+border-radius: 10px;
+padding: 10px;
+color: #2c3e50;
+}
+
+QWidget {
+background-color: rgb(248, 250, 252);
+}
+
+QPushButton {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 5px;
+    border: 1px solid #d2d7dd; 
+    height: 20px;
+}
+
+QLabel {
+    font: 12pt &quot;Courier&quot;;
+}
+
+
+QTableWidget {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 10px;
+    border: 1px solid #d2d7dd;
+    padding: 10px;
+}
+
+QPlainTextEdit {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 10px;
+    border: 1px solid #d2d7dd;
+    padding: 10px;
+    font: 10pt &quot;Courier&quot;;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}
+
+QScrollBar {
+  border: none;
+  background: #f5f5f5;
+  width: 10px;
+  margin: 0px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+  background: #999;
+  min-height: 20px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+  background: #888;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  background: none;
+  width: 0px;
+  height: 0px;
+}
+
+QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical {
+  background: #888;
+  width: 10px;
+  height: 10px;
+}</string>
+            </property>
+            <property name="widgetResizable">
+             <bool>true</bool>
+            </property>
+            <widget class="QWidget" name="scrollAreaWidgetContents_2">
+             <property name="geometry">
+              <rect>
+               <x>0</x>
+               <y>0</y>
+               <width>797</width>
+               <height>469</height>
+              </rect>
+             </property>
+            </widget>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+      <widget class="QWidget" name="tab_lex">
+       <property name="maximumSize">
+        <size>
+         <width>16777215</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <attribute name="title">
+        <string>词法分析</string>
+       </attribute>
+       <layout class="QVBoxLayout" name="verticalLayout_2">
+        <property name="leftMargin">
+         <number>0</number>
+        </property>
+        <property name="rightMargin">
+         <number>0</number>
+        </property>
+        <property name="bottomMargin">
+         <number>0</number>
+        </property>
+        <item>
+         <widget class="QWidget" name="widget_2" native="true">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>35</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>35</height>
+           </size>
+          </property>
+          <widget class="QPushButton" name="pushButton_import_lex_source">
+           <property name="geometry">
+            <rect>
+             <x>0</x>
+             <y>0</y>
+             <width>108</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #0060DF;
+    color: #ffffff;
+    border-radius: 5px;
+}
+
+QPushButton:hover {
+    background-color: #1576ff;
+}</string>
+           </property>
+           <property name="text">
+            <string>导入源代码</string>
+           </property>
+          </widget>
+          <widget class="QPushButton" name="pushButton_do_lex">
+           <property name="geometry">
+            <rect>
+             <x>120</x>
+             <y>0</y>
+             <width>108</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="styleSheet">
+            <string notr="true">QPushButton {
+    background-color: #ffffff;
+    color: #222222;
+    border-radius: 5px;
+    border: 1px solid #d2d7dd;
+}
+
+QPushButton:hover {
+    background-color: #f5f5f5;
+}</string>
+           </property>
+           <property name="text">
+            <string>开始解析</string>
+           </property>
+          </widget>
+          <widget class="QLabel" name="label">
+           <property name="geometry">
+            <rect>
+             <x>360</x>
+             <y>0</y>
+             <width>531</width>
+             <height>33</height>
+            </rect>
+           </property>
+           <property name="text">
+            <string>请先在正则表达式转换页面转换得到源代码，再在此处分析</string>
+           </property>
+          </widget>
+         </widget>
+        </item>
+        <item>
+         <layout class="QHBoxLayout" name="horizontalLayout_3">
+          <item>
+           <widget class="QPlainTextEdit" name="input_area_lex">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="maximumSize">
+             <size>
+              <width>350</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">QPlainTextEdit {
+    background-color: rgb(255, 255, 255);
+    border: 1px solid rgb(231, 236, 243);
+    border-radius: 10px;
+    padding: 10px;
+    color: #222222;
+    font: 12pt &quot;Courier&quot;;
+}
+
+QPlainTextEdit:hover {
+    border: 1px solid rgba(0, 110, 255, 0.5);
+}
+
+QScrollBar:vertical {
+  border: none;
+  background: #f5f5f5;
+  width: 10px;
+  margin: 0px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+  background: #999;
+  min-height: 20px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+  background: #888;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  background: none;
+  width: 0px;
+  height: 0px;
+}
+
+QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical {
+  background: #888;
+  width: 10px;
+  height: 10px;
+}</string>
+            </property>
+            <property name="placeholderText">
+             <string>导入要解析的源代码或在此输入源代码...</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPlainTextEdit" name="output_area_lex">
+            <property name="styleSheet">
+             <string notr="true">QPlainTextEdit {
+    background-color: rgb(248, 250, 252);
+    border: 1px solid rgb(231, 236, 243);
+    border-radius: 10px;
+    padding: 10px;
+    color: #222222;
+    font: 12pt &quot;Courier&quot;;
+}
+
+QScrollBar:vertical {
+  border: none;
+  background: #f5f5f5;
+  width: 10px;
+  margin: 0px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical {
+  background: #999;
+  min-height: 20px;
+  border-radius: 5px;
+}
+
+QScrollBar::handle:vertical:hover {
+  background: #888;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+  background: none;
+  width: 0px;
+  height: 0px;
+}
+
+QScrollBar::up-arrow:vertical, QScrollBar::down-arrow:vertical {
+  background: #888;
+  width: 10px;
+  height: 10px;
+}</string>
+            </property>
+            <property name="readOnly">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
