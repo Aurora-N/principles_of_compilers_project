@@ -354,7 +354,7 @@ void LR1MainWindow::on_pushButton_analyze_clicked()
 
 void LR1MainWindow::on_pushButton_select_source_clicked()
 {
-    QString filePath = QFileDialog::getOpenFileName(this, tr("打开文件"), "", tr("文本文件 (*.txt);;所有文件 (*)"));
+    QString filePath = QFileDialog::getOpenFileName(this, tr("打开文件"), "", tr("所有文件 (*)"));
     if (filePath.isEmpty())
         return;
 
@@ -453,11 +453,11 @@ void LR1MainWindow::on_pushButton_gammar_analyze_clicked()
     // 根据错误设置样式
     QString oldStyle = ui->syntax_tree_error_output->styleSheet();
     if (errors.empty()) {
-        QString newStyle = "QListWidget { background-color: rgb(229, 248, 240); border: 1px solid rgb(172, 234, 206); color: rgb(86, 193, 143); }";
+        QString newStyle = "QListWidget { background-color: rgb(229, 248, 240); border: 1px solid rgb(172, 234, 206); color: rgb(86, 193, 143); border-radius: 10px; padding: 10px; }";
         ui->syntax_tree_error_output->setStyleSheet(newStyle);
         ui->syntax_tree_error_output->addItem(tr("未发现语法错误"));
     } else {
-        QString newStyle = "QListWidget { background-color: rgb(254, 248, 230); border: 1px solid rgb(250, 229, 172); color: rgb(208, 135, 0); }";
+        QString newStyle = "QListWidget { background-color: rgb(254, 248, 230); border: 1px solid rgb(250, 229, 172); color: rgb(208, 135, 0); border-radius: 10px; padding: 10px; }";
         ui->syntax_tree_error_output->setStyleSheet(newStyle);
         for(const string& err : errors) {
             ui->syntax_tree_error_output->addItem(QString::fromStdString(err));
